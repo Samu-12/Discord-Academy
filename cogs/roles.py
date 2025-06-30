@@ -6,22 +6,20 @@ class Roles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # --- Comandos de Prefijo para Roles ---
+    # --- Comandos de Prefijo para Roles (sin cambios) ---
 
     @commands.command(name='addrole')
-    @commands.has_permissions(manage_roles=True) # Requiere permiso para gestionar roles
+    @commands.has_permissions(manage_roles=True)
     async def add_role_prefix(self, ctx, member: discord.Member, *, role_name: str):
         """
         [Prefijo] Añade un rol a un miembro.
         Uso: !addrole @usuario <nombre del rol>
         """
-        # Buscar el rol por nombre (sin distinción entre mayúsculas y minúsculas)
         role = discord.utils.get(ctx.guild.roles, name=role_name)
 
         if not role:
             return await ctx.send(f"❌ No se encontró el rol `{role_name}`.")
 
-        # Verificar la jerarquía de roles para evitar que el bot se asigne roles por encima de sí mismo
         if role.position >= ctx.guild.me.top_role.position:
             return await ctx.send(f"❌ No puedo asignar el rol `{role.name}` porque está por encima o al mismo nivel que mi rol más alto.")
 
@@ -62,43 +60,46 @@ class Roles(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Ocurrió un error al quitar el rol: {e}")
 
-    # --- Comandos de Barra (Slash Commands) para Roles ---
+    # --- Comandos de Barra (Slash Commands) para Roles (Corregidos) ---
 
     @app_commands.command(name="addrole", description="Asigna un rol a un miembro del servidor.")
     @app_commands.describe(member="El miembro al que se le asignará el rol.", role="El rol a asignar.")
-    @app_commands.default_permissions(manage_roles=True) # Requiere permiso para gestionar roles
+    @app_commands.default_permissions(manage_roles=True)
     async def add_role_slash(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
         """
         [Barra] Asigna un rol a un miembro del servidor.
         """
+        # IMPORTANTE: Deferir la interacción al principio para poder responder más tarde.
+        await interaction.response.defer(ephemeral=True) # Esto "reconoce" la interacción
+
         # Asegúrate de que el comando se use en un servidor
         if interaction.guild is None:
-            return await interaction.response.send_message("Este comando solo puede ser usado en un servidor.", ephemeral=True)
+            # Usa followup.send() después de deferir
+            return await interaction.followup.send("Este comando solo puede ser usado en un servidor.", ephemeral=True)
 
         # Verificar la jerarquía de roles del bot y del rol a asignar
         if role.position >= interaction.guild.me.top_role.position:
-            return await interaction.response.send_message(
-                f"❌ No puedo asignar el rol `{role.name}` porque está por encima o al mismo nivel que mi rol más alto.",
+            return await interaction.followup.send(
+                f"❌ No puedo asignar el rol `{role.name}` porque está por encima o al mismo nivel que mi rol más alto. Mueve mi rol por encima del rol `{role.name}` en la jerarquía de roles del servidor.",
                 ephemeral=True
             )
         # Verificar la jerarquía de roles del usuario que ejecuta el comando y del rol a asignar
         if interaction.user.top_role.position <= role.position and interaction.user.id != interaction.guild.owner_id:
-             return await interaction.response.send_message(
-                 f"❌ No puedes asignar el rol `{role.name}` porque está por encima o al mismo nivel que tu rol más alto.",
+             return await interaction.followup.send(
+                 f"❌ No puedes asignar el rol `{role.name}` porque está por encima o al mismo nivel que tu rol más alto. Quieres gestionar roles que están por encima de ti.",
                  ephemeral=True
              )
 
-
         if role in member.roles:
-            return await interaction.response.send_message(f"⚠️ {member.mention} ya tiene el rol `{role.name}`.", ephemeral=True)
+            return await interaction.followup.send(f"⚠️ {member.mention} ya tiene el rol `{role.name}`.", ephemeral=True)
 
         try:
             await member.add_roles(role, reason=f"Rol asignado por {interaction.user} usando el comando /addrole.")
-            await interaction.response.send_message(f"✅ Se le ha asignado el rol `{role.name}` a {member.mention}.", ephemeral=True)
+            await interaction.followup.send(f"✅ Se le ha asignado el rol `{role.name}` a {member.mention}.", ephemeral=True)
         except discord.Forbidden:
-            await interaction.response.send_message("❌ No tengo los permisos necesarios para añadir este rol. Asegúrate de que mi rol esté por encima del rol que intentas asignar.", ephemeral=True)
+            await interaction.followup.send("❌ No tengo los permisos necesarios para añadir este rol. Asegúrate de que mi rol esté por encima del rol que intentas asignar.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al añadir el rol: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Ocurrió un error al añadir el rol: {e}", ephemeral=True)
 
     @app_commands.command(name="removerole", description="Quita un rol a un miembro del servidor.")
     @app_commands.describe(member="El miembro al que se le quitará el rol.", role="El rol a quitar.")
@@ -107,30 +108,33 @@ class Roles(commands.Cog):
         """
         [Barra] Quita un rol a un miembro del servidor.
         """
+        # IMPORTANTE: Deferir la interacción al principio
+        await interaction.response.defer(ephemeral=True)
+
         if interaction.guild is None:
-            return await interaction.response.send_message("Este comando solo puede ser usado en un servidor.", ephemeral=True)
+            return await interaction.followup.send("Este comando solo puede ser usado en un servidor.", ephemeral=True)
 
         if role.position >= interaction.guild.me.top_role.position:
-            return await interaction.response.send_message(
-                f"❌ No puedo quitar el rol `{role.name}` porque está por encima o al mismo nivel que mi rol más alto.",
+            return await interaction.followup.send(
+                f"❌ No puedo quitar el rol `{role.name}` porque está por encima o al mismo nivel que mi rol más alto. Mueve mi rol por encima del rol `{role.name}` en la jerarquía de roles del servidor.",
                 ephemeral=True
             )
         if interaction.user.top_role.position <= role.position and interaction.user.id != interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                f"❌ No puedes quitar el rol `{role.name}` porque está por encima o al mismo nivel que tu rol más alto.",
+            return await interaction.followup.send(
+                f"❌ No puedes quitar el rol `{role.name}` porque está por encima o al mismo nivel que tu rol más alto. Quieres gestionar roles que están por encima de ti.",
                 ephemeral=True
             )
 
         if role not in member.roles:
-            return await interaction.response.send_message(f"⚠️ {member.mention} no tiene el rol `{role.name}`.", ephemeral=True)
+            return await interaction.followup.send(f"⚠️ {member.mention} no tiene el rol `{role.name}`.", ephemeral=True)
 
         try:
             await member.remove_roles(role, reason=f"Rol removido por {interaction.user} usando el comando /removerole.")
-            await interaction.response.send_message(f"✅ Se le ha quitado el rol `{role.name}` a {member.mention}.", ephemeral=True)
+            await interaction.followup.send(f"✅ Se le ha quitado el rol `{role.name}` a {member.mention}.", ephemeral=True)
         except discord.Forbidden:
-            await interaction.response.send_message("❌ No tengo los permisos necesarios para quitar este rol. Asegúrate de que mi rol esté por encima del rol que intentas quitar.", ephemeral=True)
+            await interaction.followup.send("❌ No tengo los permisos necesarios para quitar este rol. Asegúrate de que mi rol esté por encima del rol que intentas quitar.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al quitar el rol: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Ocurrió un error al quitar el rol: {e}", ephemeral=True)
 
 # Función de configuración del Cog
 async def setup(bot):
