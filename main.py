@@ -3,7 +3,8 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 import motor.motor_asyncio
-import asyncio # Necesario para asyncio.sleep si se usa en algún cog o aquí
+import asyncio
+from discord import app_commands 
 
 # Cargar las variables de entorno desde el archivo .env
 load_dotenv()
@@ -65,14 +66,24 @@ async def load_cogs():
 # --- Evento: Cuando el Bot está Listo ---
 @bot.event
 async def on_ready():
-    """
-    Este evento se dispara una vez que el bot ha iniciado sesión y está listo.
-    """
     print(f'¡Bot conectado como {bot.user}!')
     print(f'ID del Bot: {bot.user.id}')
-    
-    await connect_to_mongodb() # Conectar a MongoDB cuando el bot esté listo
-    await load_cogs()          # Cargar todos los cogs después de conectar a la DB
+
+    await connect_to_mongodb() # Conectar a MongoDB
+    await load_cogs()          # Cargar todos los cogs
+
+    # --- Sincronizar comandos de barra ---
+    # Puedes sincronizar globalmente o por servidor específico para pruebas
+    try:
+        # Sincronización global (ideal para producción, se propaga lentamente)
+        synced_commands = await bot.tree.sync()
+        # Si quieres probar en un servidor específico rápidamente:
+        # GUILD_ID_PARA_PRUEBAS = discord.Object(id=ID_DE_TU_SERVIDOR) # Reemplaza con el ID de tu servidor
+        # synced_commands = await bot.tree.sync(guild=GUILD_ID_PARA_PRUEBAS) 
+
+        print(f"Sincronizados {len(synced_commands)} comandos de barra.")
+    except Exception as e:
+        print(f"Error al sincronizar comandos de barra: {e}")
 
     print('-------------------------------------------')
 
