@@ -3,32 +3,24 @@ from discord.ext import commands
 import re
 import time
 import asyncio
-
-# Importar app_commands para comandos de barra
 from discord import app_commands
 
-# Diccionarios para almacenar datos temporales de spam y usuarios en la memoria del bot.
 spam_detection = {}
 recent_messages = {}
 
-# Constantes de configuración para la moderación
 SPAM_THRESHOLD_TIME = 5
 SPAM_THRESHOLD_COUNT = 5
 SPAM_REPETITION_THRESHOLD = 3
 
 MAX_WARNINGS_BEFORE_MUTE = 3
-MUTE_DURATION_SECONDS = 600 # 10 minutos
+MUTE_DURATION_SECONDS = 600
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # --- Funciones Auxiliares (sin cambios, ya que son internas del Cog) ---
+    # --- Funciones Auxiliares (sin cambios) ---
     async def get_moderation_settings(self, guild_id):
-        """
-        Obtiene la configuración de moderación (palabras prohibidas, enlaces permitidos, canal de logs)
-        desde la base de datos para un servidor específico.
-        """
         if self.bot.db is None:
             print("Error: La base de datos no está conectada para obtener configuración de moderación.")
             return {}
@@ -42,9 +34,6 @@ class Moderation(commands.Cog):
         }
 
     async def send_mod_log(self, log_channel, embed_title, description, offender, action_type, reason, color, message_link=None):
-        """
-        Envía un mensaje embed al canal de logs de moderación del staff.
-        """
         if log_channel:
             log_embed = discord.Embed(
                 title=embed_title,
@@ -71,9 +60,6 @@ class Moderation(commands.Cog):
             print(f"MOD_LOG: {action_type} - {offender.name} | Razón: {reason}")
 
     async def warn_or_mute_user(self, member, reason, message_to_delete=None):
-        """
-        Maneja el sistema de advertencias y muteo automático para un usuario.
-        """
         user_id = member.id
         guild_id = member.guild.id
 
@@ -163,10 +149,6 @@ class Moderation(commands.Cog):
     # --- Evento on_message para Detección de Moderación (sin cambios) ---
     @commands.Cog.listener()
     async def on_message(self, message):
-        """
-        Este evento se activa cada vez que se envía un mensaje en el servidor.
-        Aquí se implementa la lógica de anti-spam, anti-links y filtro de palabras.
-        """
         if message.author == self.bot.user:
             return
 
@@ -267,53 +249,19 @@ class Moderation(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Ocurrió un error al configurar el canal de logs: {e}")
 
-    # ... (el resto de tus comandos de prefijo !addword, !removeword, !listwords, !addlink, !removelink, !listlinks) ...
-    # Los he omitido aquí por brevedad, pero mantenlos en tu archivo.
-
-
-    # --- NUEVOS COMANDOS DE BARRA (SLASH COMMANDS) ---
-    # Para la insignia, al menos uno de estos comandos globales (sin guild_ids específicos)
-    # debe ser usado y tu bot debe estar en 75 servidores o más.
-
-    @app_commands.command(name="setmodlogs", description="Configura el canal para los logs de moderación automática.")
-    @app_commands.describe(channel="El canal de texto para los logs de moderación.")
-    @app_commands.default_permissions(manage_guild=True) # Requiere permiso de "Gestionar Servidor"
-    async def set_mod_logs_slash(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    @commands.command(name='addword')
+    @commands.has_permissions(manage_messages=True)
+    async def add_prohibited_word(self, ctx, *, word: str):
         """
-        [Barra] Configura el canal para los logs de moderación automática.
+        Añade una palabra o frase a la lista de palabras prohibidas del servidor.
+        Uso: !addword <palabra_o_frase>
         """
-        if self.bot.db is None:
-            await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
-            return
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
 
-        guild_id = interaction.guild_id
-        try:
-            await self.bot.db.moderation_settings.update_one(
-                {"_id": guild_id},
-                {"$set": {"log_channel_id": channel.id}},
-                upsert=True
-            )
-            await interaction.response.send_message(f"✅ ¡El canal de logs de moderación se ha configurado a {channel.mention} con éxito!", ephemeral=True)
-            print(f"Canal de logs de moderación configurado a {channel.name} ({channel.id}) para el servidor '{interaction.guild.name}'.")
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al configurar el canal de logs: {e}", ephemeral=True)
-            print(f"Error al configurar el canal de logs de moderación: {e}")
-
-
-    @app_commands.command(name="addword", description="Añade una palabra o frase a la lista de palabras prohibidas.")
-    @app_commands.describe(word="La palabra o frase a prohibir.")
-    @app_commands.default_permissions(manage_messages=True)
-    async def add_prohibited_word_slash(self, interaction: discord.Interaction, word: str):
-        """
-        [Barra] Añade una palabra o frase a la lista de palabras prohibidas del servidor.
-        """
-        if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
-
-        guild_id = interaction.guild_id
+        guild_id = ctx.guild.id
         word = word.lower().strip()
         if not word:
-            return await interaction.response.send_message("❌ Por favor, especifica una palabra o frase para añadir.", ephemeral=True)
+            return await ctx.send("❌ Por favor, especifica una palabra o frase para añadir.")
 
         try:
             result = await self.bot.db.moderation_settings.update_one(
@@ -322,27 +270,26 @@ class Moderation(commands.Cog):
                 upsert=True
             )
             if result.modified_count > 0 or result.upserted_id:
-                await interaction.response.send_message(f"✅ `'{word}'` ha sido añadida a las palabras prohibidas.", ephemeral=True)
+                await ctx.send(f"✅ `'{word}'` ha sido añadida a las palabras prohibidas.")
             else:
-                await interaction.response.send_message(f"⚠️ `'{word}'` ya estaba en la lista de palabras prohibidas.", ephemeral=True)
+                await ctx.send(f"⚠️ `'{word}'` ya estaba en la lista de palabras prohibidas.")
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al añadir la palabra: {e}", ephemeral=True)
+            await ctx.send(f"❌ Ocurrió un error al añadir la palabra: {e}")
 
 
-    @app_commands.command(name="removeword", description="Quita una palabra o frase de la lista de palabras prohibidas.")
-    @app_commands.describe(word="La palabra o frase a eliminar.")
-    @app_commands.default_permissions(manage_messages=True)
-    async def remove_prohibited_word_slash(self, interaction: discord.Interaction, word: str):
+    @commands.command(name='removeword')
+    @commands.has_permissions(manage_messages=True)
+    async def remove_prohibited_word(self, ctx, *, word: str):
         """
-        [Barra] Quita una palabra o frase de la lista de palabras prohibidas del servidor.
+        Quita una palabra o frase de la lista de palabras prohibidas del servidor.
+        Uso: !removeword <palabra_o_frase>
         """
-        if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
 
-        guild_id = interaction.guild_id
+        guild_id = ctx.guild.id
         word = word.lower().strip()
         if not word:
-            return await interaction.response.send_message("❌ Por favor, especifica una palabra o frase para eliminar.", ephemeral=True)
+            return await ctx.send("❌ Por favor, especifica una palabra o frase para eliminar.")
 
         try:
             result = await self.bot.db.moderation_settings.update_one(
@@ -350,21 +297,203 @@ class Moderation(commands.Cog):
                 {"$pull": {"prohibited_words": word}}
             )
             if result.modified_count > 0:
-                await interaction.response.send_message(f"✅ `'{word}'` ha sido eliminada de las palabras prohibidas.", ephemeral=True)
+                await ctx.send(f"✅ `'{word}'` ha sido eliminada de las palabras prohibidas.")
             else:
-                await interaction.response.send_message(f"⚠️ `'{word}'` no se encontró en la lista de palabras prohibidas.", ephemeral=True)
+                await ctx.send(f"⚠️ `'{word}'` no se encontró en la lista de palabras prohibidas.")
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al eliminar la palabra: {e}", ephemeral=True)
+                await ctx.send(f"❌ Ocurrió un error al eliminar la palabra: {e}")
+
+
+    @commands.command(name='listwords')
+    @commands.has_permissions(manage_messages=True)
+    async def list_prohibited_words(self, ctx):
+        """
+        Muestra la lista de palabras prohibidas configuradas para este servidor.
+        Uso: !listwords
+        """
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
+
+        guild_id = ctx.guild.id
+        settings = await self.get_moderation_settings(guild_id)
+        prohibited_words = settings.get("prohibited_words", [])
+
+        if prohibited_words:
+            words_list = "\n".join([f"- {w}" for w in sorted(prohibited_words)])
+            embed = discord.Embed(
+                title="🚫 Palabras Prohibidas del Servidor",
+                description=f"Las siguientes palabras están prohibidas:\n```\n{words_list}\n```",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("ℹ️ No hay palabras prohibidas configuradas para este servidor. ¡Usa `!addword <palabra>` para añadir una!")
+
+    @commands.command(name='addlink')
+    @commands.has_permissions(manage_messages=True)
+    async def add_allowed_link(self, ctx, *, link: str):
+        """
+        Añade un dominio o patrón de enlace a la lista de enlaces permitidos.
+        Uso: !addlink <dominio.com/patron>
+        """
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
+        
+        guild_id = ctx.guild.id
+        link = link.lower().strip()
+        if not link:
+            return await ctx.send("❌ Por favor, especifica un enlace o patrón de dominio a añadir (ej. `youtube.com/`, `discord.gg/`).")
+
+        try:
+            result = await self.bot.db.moderation_settings.update_one(
+                {"_id": guild_id},
+                {"$addToSet": {"allowed_links": link}},
+                upsert=True
+            )
+            if result.modified_count > 0 or result.upserted_id:
+                await ctx.send(f"✅ `'{link}'` ha sido añadido a los enlaces permitidos.")
+            else:
+                await ctx.send(f"⚠️ `'{link}'` ya estaba en la lista de enlaces permitidos.")
+        except Exception as e:
+            await ctx.send(f"❌ Ocurrió un error al añadir el enlace: {e}")
+
+    @commands.command(name='removelink')
+    @commands.has_permissions(manage_messages=True)
+    async def remove_allowed_link(self, ctx, *, link: str):
+        """
+        Quita un dominio o patrón de enlace de la lista de enlaces permitidos.
+        Uso: !removelink <dominio.com/patron>
+        """
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
+        
+        guild_id = ctx.guild.id
+        link = link.lower().strip()
+        if not link:
+            return await ctx.send("❌ Por favor, especifica un enlace o patrón de dominio a eliminar.")
+
+        try:
+            result = await self.bot.db.moderation_settings.update_one(
+                {"_id": guild_id},
+                {"$pull": {"allowed_links": link}}
+            )
+            if result.modified_count > 0:
+                await ctx.send(f"✅ `'{link}'` ha sido eliminado de los enlaces permitidos.")
+            else:
+                await ctx.send(f"⚠️ `'{link}'` no se encontró en la lista de enlaces permitidos.")
+        except Exception as e:
+                await ctx.send(f"❌ Ocurrió un error al eliminar el enlace: {e}")
+
+    @commands.command(name='listlinks')
+    @commands.has_permissions(manage_messages=True)
+    async def list_allowed_links(self, ctx):
+        """
+        Muestra la lista de enlaces permitidos configurados para este servidor.
+        Uso: !listlinks
+        """
+        if self.bot.db is None: return await ctx.send("❌ Error: La base de datos no está conectada.")
+        
+        guild_id = ctx.guild.id
+        settings = await self.get_moderation_settings(guild_id)
+        allowed_links = settings.get("allowed_links", [])
+
+        if allowed_links:
+            links_list = "\n".join([f"- {l}" for l in sorted(allowed_links)])
+            embed = discord.Embed(
+                title="🔗 Enlaces Permitidos del Servidor",
+                description=f"Los siguientes dominios/patrones de enlace están permitidos:\n```\n{links_list}\n```",
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("ℹ️ No hay enlaces permitidos configurados para este servidor. ¡Usa `!addlink <dominio.com/>` para añadir uno!")
+
+
+    # --- NUEVOS COMANDOS DE BARRA (SLASH COMMANDS) ---
+    # ¡Correcciones implementadas aquí con defer() y followup.send()!
+
+    @app_commands.command(name="setmodlogs", description="Configura el canal para los logs de moderación automática.")
+    @app_commands.describe(channel="El canal de texto para los logs de moderación.")
+    @app_commands.default_permissions(manage_guild=True)
+    async def set_mod_logs_slash(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
+        if self.bot.db is None:
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
+
+        guild_id = interaction.guild_id
+        try:
+            await self.bot.db.moderation_settings.update_one(
+                {"_id": guild_id},
+                {"$set": {"log_channel_id": channel.id}},
+                upsert=True
+            )
+            await interaction.followup.send(f"✅ ¡El canal de logs de moderación se ha configurado a {channel.mention} con éxito!", ephemeral=True)
+            print(f"Canal de logs de moderación configurado a {channel.name} ({channel.id}) para el servidor '{interaction.guild.name}'.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ocurrió un error al configurar el canal de logs: {e}", ephemeral=True)
+            print(f"Error al configurar el canal de logs de moderación: {e}")
+
+
+    @app_commands.command(name="addword", description="Añade una palabra o frase a la lista de palabras prohibidas.")
+    @app_commands.describe(word="La palabra o frase a prohibir.")
+    @app_commands.default_permissions(manage_messages=True)
+    async def add_prohibited_word_slash(self, interaction: discord.Interaction, word: str):
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
+        if self.bot.db is None:
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
+
+        guild_id = interaction.guild_id
+        word = word.lower().strip()
+        if not word:
+            return await interaction.followup.send("❌ Por favor, especifica una palabra o frase para añadir.", ephemeral=True)
+
+        try:
+            result = await self.bot.db.moderation_settings.update_one(
+                {"_id": guild_id},
+                {"$addToSet": {"prohibited_words": word}},
+                upsert=True
+            )
+            if result.modified_count > 0 or result.upserted_id:
+                await interaction.followup.send(f"✅ `'{word}'` ha sido añadida a las palabras prohibidas.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"⚠️ `'{word}'` ya estaba en la lista de palabras prohibidas.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ocurrió un error al añadir la palabra: {e}", ephemeral=True)
+
+
+    @app_commands.command(name="removeword", description="Quita una palabra o frase de la lista de palabras prohibidas.")
+    @app_commands.describe(word="La palabra o frase a eliminar.")
+    @app_commands.default_permissions(manage_messages=True)
+    async def remove_prohibited_word_slash(self, interaction: discord.Interaction, word: str):
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
+        if self.bot.db is None:
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
+
+        guild_id = interaction.guild_id
+        word = word.lower().strip()
+        if not word:
+            return await interaction.followup.send("❌ Por favor, especifica una palabra o frase para eliminar.", ephemeral=True)
+
+        try:
+            result = await self.bot.db.moderation_settings.update_one(
+                {"_id": guild_id},
+                {"$pull": {"prohibited_words": word}}
+            )
+            if result.modified_count > 0:
+                await interaction.followup.send(f"✅ `'{word}'` ha sido eliminada de las palabras prohibidas.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"⚠️ `'{word}'` no se encontró en la lista de palabras prohibidas.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ocurrió un error al eliminar la palabra: {e}", ephemeral=True)
 
 
     @app_commands.command(name="listwords", description="Muestra la lista de palabras prohibidas.")
     @app_commands.default_permissions(manage_messages=True)
     async def list_prohibited_words_slash(self, interaction: discord.Interaction):
-        """
-        [Barra] Muestra la lista de palabras prohibidas configuradas para este servidor.
-        """
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
         if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
 
         guild_id = interaction.guild_id
         settings = await self.get_moderation_settings(guild_id)
@@ -377,25 +506,24 @@ class Moderation(commands.Cog):
                 description=f"Las siguientes palabras están prohibidas:\n```\n{words_list}\n```",
                 color=discord.Color.red()
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.response.send_message("ℹ️ No hay palabras prohibidas configuradas para este servidor. ¡Usa `/addword <palabra>` para añadir una!", ephemeral=True)
+            await interaction.followup.send("ℹ️ No hay palabras prohibidas configuradas para este servidor. ¡Usa `/addword <palabra>` para añadir una!", ephemeral=True)
 
 
     @app_commands.command(name="addlink", description="Añade un dominio o patrón de enlace a la lista de permitidos.")
     @app_commands.describe(link="El dominio o patrón de enlace a permitir (ej. discord.gg/).")
     @app_commands.default_permissions(manage_messages=True)
     async def add_allowed_link_slash(self, interaction: discord.Interaction, link: str):
-        """
-        [Barra] Añade un dominio o patrón de enlace a la lista de enlaces permitidos.
-        """
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
         if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
         
         guild_id = interaction.guild_id
         link = link.lower().strip()
         if not link:
-            return await interaction.response.send_message("❌ Por favor, especifica un enlace o patrón de dominio a añadir (ej. `youtube.com/`, `discord.gg/`).", ephemeral=True)
+            return await interaction.followup.send("❌ Por favor, especifica un enlace o patrón de dominio a añadir (ej. `youtube.com/`, `discord.gg/`).", ephemeral=True)
 
         try:
             result = await self.bot.db.moderation_settings.update_one(
@@ -404,27 +532,26 @@ class Moderation(commands.Cog):
                 upsert=True
             )
             if result.modified_count > 0 or result.upserted_id:
-                await interaction.response.send_message(f"✅ `'{link}'` ha sido añadido a los enlaces permitidos.", ephemeral=True)
+                await interaction.followup.send(f"✅ `'{link}'` ha sido añadido a los enlaces permitidos.", ephemeral=True)
             else:
-                await interaction.response.send_message(f"⚠️ `'{link}'` ya estaba en la lista de enlaces permitidos.", ephemeral=True)
+                await interaction.followup.send(f"⚠️ `'{link}'` ya estaba en la lista de enlaces permitidos.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al añadir el enlace: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Ocurrió un error al añadir el enlace: {e}", ephemeral=True)
 
 
     @app_commands.command(name="removelink", description="Quita un dominio o patrón de enlace de la lista de permitidos.")
     @app_commands.describe(link="El dominio o patrón de enlace a eliminar.")
     @app_commands.default_permissions(manage_messages=True)
     async def remove_allowed_link_slash(self, interaction: discord.Interaction, link: str):
-        """
-        [Barra] Quita un dominio o patrón de enlace de la lista de enlaces permitidos.
-        """
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
         if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
         
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         link = link.lower().strip()
         if not link:
-            return await interaction.response.send_message("❌ Por favor, especifica un enlace o patrón de dominio a eliminar.", ephemeral=True)
+            return await interaction.followup.send("❌ Por favor, especifica un enlace o patrón de dominio a eliminar.", ephemeral=True)
 
         try:
             result = await self.bot.db.moderation_settings.update_one(
@@ -432,23 +559,22 @@ class Moderation(commands.Cog):
                 {"$pull": {"allowed_links": link}}
             )
             if result.modified_count > 0:
-                await interaction.response.send_message(f"✅ `'{link}'` ha sido eliminado de los enlaces permitidos.", ephemeral=True)
+                await interaction.followup.send(f"✅ `'{link}'` ha sido eliminado de los enlaces permitidos.", ephemeral=True)
             else:
-                await interaction.response.send_message(f"⚠️ `'{link}'` no se encontró en la lista de enlaces permitidos.", ephemeral=True)
+                await interaction.followup.send(f"⚠️ `'{link}'` no se encontró en la lista de enlaces permitidos.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Ocurrió un error al eliminar el enlace: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Ocurrió un error al eliminar el enlace: {e}", ephemeral=True)
 
 
     @app_commands.command(name="listlinks", description="Muestra la lista de enlaces permitidos.")
     @app_commands.default_permissions(manage_messages=True)
     async def list_allowed_links_slash(self, interaction: discord.Interaction):
-        """
-        [Barra] Muestra la lista de enlaces permitidos configurados para este servidor.
-        """
+        await interaction.response.defer(ephemeral=True) # Deferir la interacción
+
         if self.bot.db is None:
-            return await interaction.response.send_message("❌ Error: La base de datos no está conectada.", ephemeral=True)
+            return await interaction.followup.send("❌ Error: La base de datos no está conectada.", ephemeral=True)
         
-        guild_id = interaction.guild_id
+        guild_id = interaction.guild.id
         settings = await self.get_moderation_settings(guild_id)
         allowed_links = settings.get("allowed_links", [])
 
@@ -459,12 +585,11 @@ class Moderation(commands.Cog):
                 description=f"Los siguientes dominios/patrones de enlace están permitidos:\n```\n{links_list}\n```",
                 color=discord.Color.blue()
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.response.send_message("ℹ️ No hay enlaces permitidos configurados para este servidor. ¡Usa `/addlink <dominio.com/>` para añadir uno!", ephemeral=True)
+            await interaction.followup.send("ℹ️ No hay enlaces permitidos configurados para este servidor. ¡Usa `/addlink <dominio.com/>` para añadir uno!", ephemeral=True)
 
 
 # Función de configuración del Cog
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
-    # No es necesario llamar a tree.sync() aquí, lo haremos en main.py al cargar los cogs
