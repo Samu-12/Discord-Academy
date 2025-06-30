@@ -9,7 +9,7 @@ import motor.motor_asyncio # Importamos motor, necesario para MongoDB
 load_dotenv()
 
 # Obtener los valores de las variables de entorno
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_TOKEN_PRINCIPAL = os.getenv("DISCORD_BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
 # --- Configuración de Intents de Discord ---
@@ -186,8 +186,8 @@ async def set_bienvenida(ctx, channel: discord.TextChannel):
 # --- Ejecutar el Bot ---
 # Esto asegura que el bot solo se ejecute si este script es el principal
 if __name__ == "__main__":
-    if DISCORD_BOT_TOKEN and MONGO_URI: # Aquí no se cambia porque DISCORD_BOT_TOKEN y MONGO_URI son strings y None evalúa a False
-        bot.run(DISCORD_BOT_TOKEN) # Inicia el bot con tu token de Discord
+    if DISCORD_TOKEN_PRINCIPAL and MONGO_URI: # Aquí no se cambia porque DISCORD_BOT_TOKEN y MONGO_URI son strings y None evalúa a False
+        bot.run(DISCORD_TOKEN_PRINCIPAL) # Inicia el bot con tu token de Discord
     else:
         print("Error: Asegúrate de tener DISCORD_BOT_TOKEN y MONGO_URI en tu archivo .env.")
 
